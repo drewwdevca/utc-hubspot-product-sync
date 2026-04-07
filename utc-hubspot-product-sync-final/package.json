@@ -1,0 +1,16 @@
+{
+  "name": "utc-hubspot-product-sync",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Nightly Shopify → HubSpot product sync for Uniformes Town & Country",
+  "main": "sync.js",
+  "scripts": {
+    "sync": "node sync.js"
+  },
+  "dependencies": {
+    "google-translate-api-x": "^10.7.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
