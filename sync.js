@@ -9,14 +9,13 @@
 // ============================================================
 
 // ── ENV ─────────────────────────────────────────────────────
-const SHOPIFY_STORE      = 'uniformes-town-country.myshopify.com';
-const SHOPIFY_CLIENT_ID  = process.env.SHOPIFY_CLIENT_ID;
-const SHOPIFY_SECRET     = process.env.SHOPIFY_CLIENT_SECRET;
-const HUBSPOT_TOKEN      = process.env.HUBSPOT_TOKEN;
+const SHOPIFY_STORE = 'uniformes-town-country.myshopify.com';
+const SHOPIFY_TOKEN = process.env.SHOPIFY_ACCESS_TOKEN;
+const HUBSPOT_TOKEN = process.env.HUBSPOT_TOKEN;
 
 const SHOPIFY_API_VERSION = '2026-04';
-const SHOPIFY_API        = `https://${SHOPIFY_STORE}/admin/api/${SHOPIFY_API_VERSION}`;
-const HUBSPOT_API        = 'https://api.hubapi.com';
+const SHOPIFY_API = `https://${SHOPIFY_STORE}/admin/api/${SHOPIFY_API_VERSION}`;
+const HUBSPOT_API = 'https://api.hubapi.com';
 
 // ── HELPERS ──────────────────────────────────────────────────
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -42,35 +41,10 @@ function stripHtml(html) {
     .trim();
 }
 
-// ── SHOPIFY AUTH (Client Credentials) ────────────────────────
-let shopifyToken = null;
-
-async function getShopifyToken() {
-  log('🔑', 'Requesting Shopify access token via client credentials...');
-
-  const res = await fetch(`https://${SHOPIFY_STORE}/admin/oauth/access_token`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({
-      grant_type: 'client_credentials',
-      client_id: SHOPIFY_CLIENT_ID,
-      client_secret: SHOPIFY_SECRET,
-    }),
-  });
-
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`Shopify auth failed (${res.status}): ${err}`);
-  }
-
-  const data = await res.json();
-  shopifyToken = data.access_token;
-  log('✅', `Shopify token acquired (expires in ${data.expires_in}s)`);
-}
-
+// ── SHOPIFY API ──────────────────────────────────────────────
 async function shopifyFetch(url) {
   const res = await fetch(url, {
-    headers: { 'X-Shopify-Access-Token': shopifyToken },
+    headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN },
   });
 
   if (res.status === 429) {
@@ -113,7 +87,6 @@ async function fetchInventoryLevels(inventoryItemIds) {
   const levels = {};
   const chunks = [];
 
-  // API accepts max 50 IDs at a time
   for (let i = 0; i < inventoryItemIds.length; i += 50) {
     chunks.push(inventoryItemIds.slice(i, i + 50));
   }
@@ -125,7 +98,6 @@ async function fetchInventoryLevels(inventoryItemIds) {
 
     for (const level of data.inventory_levels) {
       const id = level.inventory_item_id;
-      // Sum across locations
       levels[id] = (levels[id] || 0) + (level.available || 0);
     }
 
@@ -147,7 +119,6 @@ async function initTranslation() {
 async function translateToEnglish(text) {
   if (!text || text.trim() === '') return '';
 
-  // Check cache
   const cacheKey = text.trim().toLowerCase();
   if (translationCache.has(cacheKey)) return translationCache.get(cacheKey);
 
@@ -162,7 +133,6 @@ async function translateToEnglish(text) {
   }
 }
 
-// Translate option values like "Noir", "Blanc", "Rouge"
 async function translateOption(value) {
   if (!value || value === 'Default Title') return '';
   return await translateToEnglish(value);
@@ -232,7 +202,7 @@ async function ensureCustomProperties() {
 // ── HUBSPOT: Get existing products indexed by variant ID ─────
 async function getExistingProducts() {
   log('📋', 'Loading existing HubSpot products...');
-  const map = new Map(); // shopify_variant_id → { hubspotId, hs_sku, ... }
+  const map = new Map();
   let after = undefined;
 
   while (true) {
@@ -266,14 +236,12 @@ async function getExistingProducts() {
 // ── HUBSPOT: Create or update product ────────────────────────
 async function upsertProduct(properties, existingId) {
   if (existingId) {
-    // Update
     const res = await hubspotFetch(`/crm/v3/objects/products/${existingId}`, {
       method: 'PATCH',
       body: JSON.stringify({ properties }),
     });
     return res.ok ? 'updated' : 'error';
   } else {
-    // Create
     const res = await hubspotFetch('/crm/v3/objects/products', {
       method: 'POST',
       body: JSON.stringify({ properties }),
@@ -291,8 +259,7 @@ async function main() {
 
   // Validate env
   const missing = [];
-  if (!SHOPIFY_CLIENT_ID) missing.push('SHOPIFY_CLIENT_ID');
-  if (!SHOPIFY_SECRET) missing.push('SHOPIFY_CLIENT_SECRET');
+  if (!SHOPIFY_TOKEN) missing.push('SHOPIFY_ACCESS_TOKEN');
   if (!HUBSPOT_TOKEN) missing.push('HUBSPOT_TOKEN');
   if (missing.length) {
     console.error(`❌ Missing env vars: ${missing.join(', ')}`);
@@ -303,21 +270,18 @@ async function main() {
   log('🌐', 'Initializing Google Translate...');
   await initTranslation();
 
-  // Step 2: Auth
-  await getShopifyToken();
-
-  // Step 3: Ensure HubSpot properties exist
+  // Step 2: Ensure HubSpot properties exist
   await ensureCustomProperties();
 
-  // Step 4: Get existing HubSpot products
+  // Step 3: Get existing HubSpot products
   const existingProducts = await getExistingProducts();
 
-  // Step 5: Fetch Shopify products
+  // Step 4: Fetch Shopify products
   log('📦', 'Fetching Shopify product catalog...');
   const products = await fetchAllProducts();
   log('✅', `Loaded ${products.length} Shopify products\n`);
 
-  // Step 6: Collect all inventory item IDs
+  // Step 5: Collect all inventory item IDs
   const allInventoryItemIds = [];
   for (const product of products) {
     for (const variant of product.variants) {
@@ -327,12 +291,12 @@ async function main() {
     }
   }
 
-  // Step 7: Fetch inventory levels
+  // Step 6: Fetch inventory levels
   log('📊', `Fetching inventory levels for ${allInventoryItemIds.length} items...`);
   const inventoryLevels = await fetchInventoryLevels(allInventoryItemIds);
   log('✅', 'Inventory levels loaded\n');
 
-  // Step 8: Process each product variant
+  // Step 7: Process each product variant
   let stats = { created: 0, updated: 0, skipped: 0, errors: 0 };
 
   for (const product of products) {
@@ -367,12 +331,10 @@ async function main() {
       const enOption3 = await translateOption(option3);
 
       // Build combined FR/EN name
-      // Format: "Chemise De Cuisinier / Unisex Cook Shirt — Noir / Black — S"
       const frParts = [option1, option2, option3].filter(Boolean);
       const enParts = [enOption1, enOption2, enOption3].filter(Boolean);
       const suffixParts = frParts.map((fr, i) => {
         const en = enParts[i] || '';
-        // If FR and EN are the same (e.g., "S", "M", "L"), don't duplicate
         return fr.toLowerCase() === en.toLowerCase() ? fr : `${fr} / ${en}`;
       });
       const suffix = suffixParts.join(' — ');
@@ -392,7 +354,6 @@ async function main() {
       const inventoryQty = inventoryLevels[variant.inventory_item_id] ?? 0;
 
       // Determine color and size from options
-      // Common pattern: option1 = color, option2 = size
       const color = option1 !== 'Default Title' ? (option1 || '') : '';
       const size = option2 || '';
 
@@ -403,7 +364,7 @@ async function main() {
         hs_sku: sku,
         hs_price_cad: variant.price || '0',
         hs_product_type: 'inventory',
-        hs_url: `https://${SHOPIFY_STORE.replace('.myshopify.com', '')}.com/products/${product.handle}`,
+        hs_url: `https://tcuniforms.com/products/${product.handle}`,
         shopify_variant_id: variantId,
         shopify_product_id: String(product.id),
         variant_color: color,
@@ -421,7 +382,6 @@ async function main() {
         log('  ✓', `Created: ${combinedName} (SKU: ${sku})`);
       } else if (result === 'updated') {
         stats.updated++;
-        // Only log updates that changed inventory (less noise)
         if (existing?.inventory_quantity !== String(inventoryQty)) {
           log('  ↻', `Updated: ${sku} — inventory ${existing?.inventory_quantity ?? '?'} → ${inventoryQty}`);
         }
