@@ -44,7 +44,7 @@ function stripHtml(html) {
 // ── SHOPIFY API ──────────────────────────────────────────────
 async function shopifyFetch(url) {
   const res = await fetch(url, {
-    headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN },
+    headers: { 'X-Shopify-Access-Token': SHOPIFY_ACCESS_TOKEN },
   });
 
   if (res.status === 429) {
@@ -259,7 +259,7 @@ async function main() {
 
   // Validate env
   const missing = [];
-  if (!SHOPIFY_TOKEN) missing.push('SHOPIFY_ACCESS_TOKEN');
+  if (!SHOPIFY_ACCESS_TOKEN) missing.push('SHOPIFY_ACCESS_TOKEN');
   if (!HUBSPOT_TOKEN) missing.push('HUBSPOT_TOKEN');
   if (missing.length) {
     console.error(`❌ Missing env vars: ${missing.join(', ')}`);
