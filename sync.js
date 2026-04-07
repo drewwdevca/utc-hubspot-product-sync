@@ -10,7 +10,7 @@
 
 // ── ENV ─────────────────────────────────────────────────────
 const SHOPIFY_STORE = 'uniformes-town-country.myshopify.com';
-const SHOPIFY_TOKEN = process.env.SHOPIFY_ACCESS_TOKEN;
+const SHOPIFY_ACCESS_TOKEN = process.env.SHOPIFY_ACCESS_TOKEN;
 const HUBSPOT_TOKEN = process.env.HUBSPOT_TOKEN;
 
 const SHOPIFY_API_VERSION = '2026-04';
